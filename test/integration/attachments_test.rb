@@ -19,9 +19,11 @@ require File.expand_path('../../test_helper', __FILE__)
 
 class AttachmentsTest < Redmine::IntegrationTest
   fixtures :projects, :enabled_modules,
-           :users, :roles, :members, :member_roles,
+           :users, :email_addresses,
+           :roles, :members, :member_roles,
            :trackers, :projects_trackers,
-           :issue_statuses, :enumerations
+           :issues, :issue_statuses, :enumerations,
+           :attachments
 
   def test_upload_should_set_default_content_type
     log_user('jsmith', 'jsmith')
@@ -134,6 +136,18 @@ class AttachmentsTest < Redmine::IntegrationTest
     end
 
     assert_include "$('#attachments_1').remove();", response.body
+  end
+
+  def test_download_should_set_sendfile_header
+    set_fixtures_attachments_directory
+    Rack::Sendfile.any_instance.stubs(:variation).returns("X-Sendfile")
+
+    get "/attachments/download/4"
+    assert_response :success
+    assert_not_nil response.headers["X-Sendfile"]
+
+  ensure
+    set_tmp_attachments_directory
   end
 
   private

@@ -19,6 +19,7 @@ class TimelogController < ApplicationController
   menu_item :time_entries
 
   before_action :find_time_entry, :only => [:show, :edit, :update]
+  before_action :check_editability, :only => [:edit, :update]
   before_action :find_time_entries, :only => [:bulk_edit, :bulk_update, :destroy]
   before_action :authorize, :only => [:show, :edit, :update, :bulk_edit, :bulk_update, :destroy]
 
@@ -31,8 +32,6 @@ class TimelogController < ApplicationController
 
   rescue_from Query::StatementInvalid, :with => :query_statement_invalid
 
-  helper :sort
-  include SortHelper
   helper :issues
   include TimelogHelper
   helper :custom_fields
@@ -42,10 +41,9 @@ class TimelogController < ApplicationController
 
   def index
     retrieve_time_entry_query
-    sort_init(@query.sort_criteria.empty? ? [['spent_on', 'desc']] : @query.sort_criteria)
-    sort_update(@query.sortable_columns)
-    scope = time_entry_scope(:order => sort_clause).
-      preload(:issue => [:project, :tracker, :status, :assigned_to, :priority])
+    scope = time_entry_scope.
+      preload(:issue => [:project, :tracker, :status, :assigned_to, :priority]).
+      preload(:project, :user)
 
     respond_to do |format|
       format.html {
@@ -167,8 +165,8 @@ class TimelogController < ApplicationController
   end
 
   def bulk_edit
-    @available_activities = TimeEntryActivity.shared.active
-    @custom_fields = TimeEntry.first.available_custom_fields
+    @available_activities = @projects.map(&:activities).reduce(:&)
+    @custom_fields = TimeEntry.first.available_custom_fields.select {|field| field.format.bulk_edit_supported}
   end
 
   def bulk_update
@@ -205,7 +203,7 @@ class TimelogController < ApplicationController
         else
           flash[:error] = l(:notice_unable_delete_time_entry)
         end
-        redirect_back_or_default project_time_entries_path(@projects.first)
+        redirect_back_or_default project_time_entries_path(@projects.first), :referer => true
       }
       format.api  {
         if destroyed
@@ -220,17 +218,23 @@ class TimelogController < ApplicationController
 private
   def find_time_entry
     @time_entry = TimeEntry.find(params[:id])
-    unless @time_entry.editable_by?(User.current)
-      render_403
-      return false
-    end
     @project = @time_entry.project
   rescue ActiveRecord::RecordNotFound
     render_404
   end
 
+  def check_editability
+    unless @time_entry.editable_by?(User.current)
+      render_403
+      return false
+    end
+  end
+
   def find_time_entries
-    @time_entries = TimeEntry.where(:id => params[:id] || params[:ids]).to_a
+    @time_entries = TimeEntry.where(:id => params[:id] || params[:ids]).
+      preload(:project => :time_entry_activities).
+      preload(:user).to_a
+
     raise ActiveRecord::RecordNotFound if @time_entries.empty?
     raise Unauthorized unless @time_entries.all? {|t| t.editable_by?(User.current)}
     @projects = @time_entries.collect(&:project).compact.uniq

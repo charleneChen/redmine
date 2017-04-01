@@ -51,7 +51,7 @@ class SettingsControllerTest < Redmine::ControllerTest
       assert_response :success
     end
 
-    assert_select 'select[id=selected_columns][name=?]', 'settings[issue_list_default_columns][]' do
+    assert_select 'select[name=?]', 'settings[issue_list_default_columns][]' do
       assert_select 'option', 4
       assert_select 'option[value=tracker]', :text => 'Tracker'
       assert_select 'option[value=subject]', :text => 'Subject'
@@ -59,7 +59,7 @@ class SettingsControllerTest < Redmine::ControllerTest
       assert_select 'option[value=updated_on]', :text => 'Updated'
     end
 
-    assert_select 'select[id=available_columns]' do
+    assert_select 'select[name=?]', 'available_columns[]' do
       assert_select 'option[value=tracker]', 0
       assert_select 'option[value=priority]', :text => 'Priority'
     end
@@ -253,5 +253,34 @@ class SettingsControllerTest < Redmine::ControllerTest
 
   ensure
     Redmine::Plugin.unregister(:foo)
+  end
+
+  def test_post_mail_handler_delimiters_should_not_save_invalid_regex_delimiters
+    post :edit, :params => {
+      :settings => {
+        :mail_handler_enable_regex_delimiters => '1',
+        :mail_handler_body_delimiters  => 'Abc[',
+      }
+    }
+
+    assert_response :success
+    assert_equal '0', Setting.mail_handler_enable_regex_delimiters
+    assert_equal '', Setting.mail_handler_body_delimiters
+
+    assert_select_error /is not a valid regular expression/
+    assert_select 'textarea[name=?]', 'settings[mail_handler_body_delimiters]', :text => 'Abc['
+  end
+
+  def test_post_mail_handler_delimiters_should_save_valid_regex_delimiters
+    post :edit, :params => {
+      :settings => {
+        :mail_handler_enable_regex_delimiters => '1',
+        :mail_handler_body_delimiters  => 'On .*, .* at .*, .* <.*<mailto:.*>> wrote:',
+      }
+    }
+
+    assert_redirected_to '/settings'
+    assert_equal '1', Setting.mail_handler_enable_regex_delimiters
+    assert_equal 'On .*, .* at .*, .* <.*<mailto:.*>> wrote:', Setting.mail_handler_body_delimiters
   end
 end

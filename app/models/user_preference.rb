@@ -23,7 +23,7 @@ class UserPreference < ActiveRecord::Base
 
   attr_protected :others, :user_id
 
-  before_save :set_others_hash
+  before_save :set_others_hash, :clear_unused_block_settings
 
   safe_attributes 'hide_mail',
     'time_zone',
@@ -36,11 +36,16 @@ class UserPreference < ActiveRecord::Base
 
   def initialize(attributes=nil, *args)
     super
-    if new_record? && !(attributes && attributes.key?(:hide_mail))
-      self.hide_mail = Setting.default_users_hide_mail?
-    end
-    if new_record? && !(attributes && attributes.key?(:no_self_notified))
-      self.no_self_notified = true
+    if new_record?
+      unless attributes && attributes.key?(:hide_mail)
+        self.hide_mail = Setting.default_users_hide_mail?
+      end
+      unless attributes && attributes.key?(:time_zone)
+        self.time_zone = Setting.default_users_time_zone
+      end
+      unless attributes && attributes.key?(:no_self_notified)
+        self.no_self_notified = true
+      end
     end
     self.others ||= {}
   end
@@ -82,4 +87,59 @@ class UserPreference < ActiveRecord::Base
 
   def textarea_font; self[:textarea_font] end
   def textarea_font=(value); self[:textarea_font]=value; end
+
+  def my_page_layout
+    self[:my_page_layout] ||= Redmine::MyPage.default_layout.deep_dup
+  end
+
+  def my_page_layout=(arg)
+    self[:my_page_layout] = arg
+  end
+
+  def my_page_settings(block=nil)
+    s = self[:my_page_settings] ||= {}
+    if block
+      s[block] ||= {}
+    else
+      s
+    end
+  end
+
+  def my_page_settings=(arg)
+    self[:my_page_settings] = arg
+  end
+
+  # Removes block from the user page layout
+  def remove_block(block)
+    block = block.to_s.underscore
+    %w(top left right).each do |f|
+      (my_page_layout[f] ||= []).delete(block)
+    end
+    my_page_layout
+  end
+
+  # Adds block to the user page layout
+  # Returns nil if block is not valid or if it's already
+  # present in the user page layout
+  def add_block(block)
+    block = block.to_s.underscore
+    return unless Redmine::MyPage.valid_block?(block, my_page_layout.values.flatten)
+
+    remove_block(block)
+    # add it on top
+    my_page_layout['top'] ||= []
+    my_page_layout['top'].unshift(block)
+  end
+
+  def update_block_settings(block, settings)
+    block = block.to_s
+    block_settings = my_page_settings(block).merge(settings.symbolize_keys)
+    my_page_settings[block] = block_settings
+  end
+
+  def clear_unused_block_settings
+    blocks = my_page_layout.values.flatten
+    my_page_settings.keep_if {|block, settings| blocks.include?(block)}
+  end
+  private :clear_unused_block_settings
 end

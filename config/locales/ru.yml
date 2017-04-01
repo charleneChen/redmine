@@ -207,6 +207,8 @@ ru:
         circular_dependency: "Такая связь приведет к циклической зависимости"
         cant_link_an_issue_with_a_descendant: "Задача не может быть связана со своей подзадачей"
         earlier_than_minimum_start_date: "не может быть раньше %{date} из-за предыдущих задач"
+        not_a_regexp: "is not a valid regular expression"
+        open_issue_with_closed_parent: "An open issue cannot be attached to a closed parent task"
 
   support:
     array:
@@ -573,10 +575,8 @@ ru:
   label_months_from: месяцев(ца) с
   label_month: Месяц
   label_more_than_ago: более, чем дней(я) назад
-  label_more: Больше
   label_my_account: Моя учётная запись
   label_my_page: Моя страница
-  label_my_page_block: Блок моей страницы
   label_my_projects: Мои проекты
   label_new: Новый
   label_new_statuses_allowed: Разрешенные новые статусы
@@ -604,8 +604,6 @@ ru:
   label_password_lost: Восстановление пароля
   label_permissions_report: Отчёт по правам доступа
   label_permissions: Права доступа
-  label_personalize_page: Персонализировать данную страницу
-  label_planning: Планирование
   label_please_login: Пожалуйста, войдите.
   label_plugins: Модули
   label_precedes: следующая
@@ -694,9 +692,7 @@ ru:
   label_user_mail_no_self_notified: "Не извещать об изменениях, которые я сделал сам"
   label_user_mail_option_all: "О всех событиях во всех моих проектах"
   label_user_mail_option_selected: "О всех событиях только в выбранном проекте..."
-  label_user_mail_option_only_owner: Только для объектов, для которых я являюсь владельцем
   label_user_mail_option_only_my_events: Только для объектов, которые я отслеживаю или в которых участвую
-  label_user_mail_option_only_assigned: Только для объектов, которые назначены мне
   label_user_new: Новый пользователь
   label_user_plural: Пользователи
   label_version: Версия
@@ -1076,16 +1072,12 @@ ru:
   description_project_scope: Область поиска
   description_filter: Фильтр
   description_user_mail_notification: Настройки почтовых оповещений
-  description_date_from: Введите дату начала
   description_message_content: Содержание сообщения
   description_available_columns: Доступные столбцы
-  description_date_range_interval: Выберите диапазон, установив дату начала и дату окончания
   description_issue_category_reassign: Выберите категорию задачи
   description_search: Поле поиска
   description_notes: Примечания
-  description_date_range_list: Выберите диапазон из списка
   description_choose_project: Проекты
-  description_date_to: Введите дату выполнения
   description_query_sort_criteria_attribute: Критерий сортировки
   description_wiki_subpages_reassign: Выбрать новую родительскую страницу
   description_selected_columns: Выбранные столбцы
@@ -1314,3 +1306,21 @@ ru:
   label_font_default: Default font
   label_font_monospace: Monospaced font
   label_font_proportional: Proportional font
+  setting_timespan_format: Time span format
+  label_table_of_contents: Table of contents
+  setting_commit_logs_formatting: Apply text formatting to commit messages
+  setting_mail_handler_enable_regex_delimiters: Enable regular expressions
+  error_move_of_child_not_possible: 'Subtask %{child} could not be moved to the new
+    project: %{errors}'
+  error_cannot_reassign_time_entries_to_an_issue_about_to_be_deleted: Spent time cannot
+    be reassigned to an issue that is about to be deleted
+  setting_timelog_required_fields: Required fields for time logs
+  label_attribute_of_object: '%{object_name}''s %{name}'
+  label_user_mail_option_only_assigned: Only for things I watch or I am assigned to
+  label_user_mail_option_only_owner: Only for things I watch or I am the owner of
+  warning_fields_cleared_on_bulk_edit: Changes will result in the automatic deletion
+    of values from one or more fields on the selected objects
+  field_updated_by: Updated by
+  field_last_updated_by: Last updated by
+  field_full_width_layout: Full width layout
+  label_last_notes: Last notes

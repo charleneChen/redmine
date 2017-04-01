@@ -85,7 +85,6 @@ class Attachment < ActiveRecord::Base
   def file=(incoming_file)
     unless incoming_file.nil?
       @temp_file = incoming_file
-      if @temp_file.size > 0
         if @temp_file.respond_to?(:original_filename)
           self.filename = @temp_file.original_filename
           self.filename.force_encoding("UTF-8")
@@ -94,7 +93,6 @@ class Attachment < ActiveRecord::Base
           self.content_type = @temp_file.content_type.to_s.chomp
         end
         self.filesize = @temp_file.size
-      end
     end
   end
 
@@ -110,7 +108,7 @@ class Attachment < ActiveRecord::Base
   # Copies the temporary file to its final location
   # and computes its MD5 hash
   def files_to_final_location
-    if @temp_file && (@temp_file.size > 0)
+    if @temp_file
       self.disk_directory = target_directory
       self.disk_filename = Attachment.disk_filename(filename, disk_directory)
       logger.info("Saving attachment '#{self.diskfile}' (#{@temp_file.size} bytes)") if logger
@@ -354,20 +352,35 @@ class Attachment < ActiveRecord::Base
     end
   end
 
-  # Returns true if the extension is allowed, otherwise false
+  # Returns true if the extension is allowed regarding allowed/denied
+  # extensions defined in application settings, otherwise false
   def self.valid_extension?(extension)
-    extension = extension.downcase.sub(/\A\.+/, '')
-
     denied, allowed = [:attachment_extensions_denied, :attachment_extensions_allowed].map do |setting|
-      Setting.send(setting).to_s.split(",").map {|s| s.strip.downcase.sub(/\A\.+/, '')}.reject(&:blank?)
+      Setting.send(setting)
     end
-    if denied.present? && denied.include?(extension)
+    if denied.present? && extension_in?(extension, denied)
       return false
     end
-    unless allowed.blank? || allowed.include?(extension)
+    if allowed.present? && !extension_in?(extension, allowed)
       return false
     end
     true
+  end
+
+  # Returns true if extension belongs to extensions list.
+  def self.extension_in?(extension, extensions)
+    extension = extension.downcase.sub(/\A\.+/, '')
+
+    unless extensions.is_a?(Array)
+      extensions = extensions.to_s.split(",").map(&:strip)
+    end
+    extensions = extensions.map {|s| s.downcase.sub(/\A\.+/, '')}.reject(&:blank?)
+    extensions.include?(extension)
+  end
+
+  # Returns true if attachment's extension belongs to extensions list.
+  def extension_in?(extensions)
+    self.class.extension_in?(File.extname(filename), extensions)
   end
 
   private
@@ -398,7 +411,7 @@ class Attachment < ActiveRecord::Base
   def self.disk_filename(filename, directory=nil)
     timestamp = DateTime.now.strftime("%y%m%d%H%M%S")
     ascii = ''
-    if filename =~ %r{^[a-zA-Z0-9_\.\-]*$}
+    if filename =~ %r{^[a-zA-Z0-9_\.\-]*$} && filename.length <= 50
       ascii = filename
     else
       ascii = Digest::MD5.hexdigest(filename)

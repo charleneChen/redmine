@@ -47,15 +47,23 @@ class Journal < ActiveRecord::Base
 
   scope :visible, lambda {|*args|
     user = args.shift || User.current
+    options = args.shift || {}
+
     joins(:issue => :project).
-      where(Issue.visible_condition(user, *args)).
-      where("(#{Journal.table_name}.private_notes = ? OR (#{Project.allowed_to_condition(user, :view_private_notes, *args)}))", false)
+      where(Issue.visible_condition(user, options)).
+      where(Journal.visible_notes_condition(user, :skip_pre_condition => true))
   }
 
   safe_attributes 'notes',
     :if => lambda {|journal, user| journal.new_record? || journal.editable_by?(user)}
   safe_attributes 'private_notes',
     :if => lambda {|journal, user| user.allowed_to?(:set_notes_private, journal.project)}
+
+  # Returns a SQL condition to filter out journals with notes that are not visible to user
+  def self.visible_notes_condition(user=User.current, options={})
+    private_notes_permission = Project.allowed_to_condition(user, :view_private_notes, options)
+    sanitize_sql_for_conditions(["(#{table_name}.private_notes = ? OR #{table_name}.user_id = ? OR (#{private_notes_permission}))", false, user.id])
+  end
 
   def initialize(*args)
     super
@@ -125,7 +133,7 @@ class Journal < ActiveRecord::Base
   end
 
   def attachments
-    journalized.respond_to?(:attachments) ? journalized.attachments : nil
+    journalized.respond_to?(:attachments) ? journalized.attachments : []
   end
 
   # Returns a string of css classes

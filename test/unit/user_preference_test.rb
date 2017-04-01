@@ -32,6 +32,13 @@ class UserPreferenceTest < ActiveSupport::TestCase
     end
   end
 
+  def test_time_zone_should_default_to_setting
+    with_settings :default_users_time_zone => 'Paris' do
+      preference = UserPreference.new
+      assert_equal 'Paris', preference.time_zone
+    end
+  end
+
   def test_no_self_notified_should_default_to_true
     preference = UserPreference.new
     assert_equal true, preference.no_self_notified
@@ -85,5 +92,16 @@ class UserPreferenceTest < ActiveSupport::TestCase
     assert_nil up.others
     up[:foo] = 'bar'
     assert_equal 'bar', up[:foo]
+  end
+
+  def test_removing_a_block_should_clear_its_settings
+    up = User.find(2).pref
+    up.my_page_layout = {'top' => ['news', 'documents']}
+    up.my_page_settings = {'news' => {:foo => 'bar'}, 'documents' => {:baz => 'quz'}}
+    up.save!
+
+    up.remove_block 'news'
+    up.save!
+    assert_equal ['documents'], up.my_page_settings.keys
   end
 end

@@ -232,8 +232,10 @@ class MailHandlerTest < ActiveSupport::TestCase
   end
 
   def test_add_issue_with_custom_fields
+    mutiple = IssueCustomField.generate!(:field_format => 'list', :name => 'OS', :multiple => true, :possible_values => ['Linux', 'Windows', 'Mac OS X'])
+
     issue = submit_email('ticket_with_custom_fields.eml',
-      :issue => {:project => 'onlinestore'}, :allow_override => ['database', 'Searchable_field']
+      :issue => {:project => 'onlinestore'}, :allow_override => ['database', 'Searchable_field', 'OS']
     )
     assert issue.is_a?(Issue)
     assert !issue.new_record?
@@ -241,6 +243,7 @@ class MailHandlerTest < ActiveSupport::TestCase
     assert_equal 'New ticket with custom field values', issue.subject
     assert_equal 'PostgreSQL', issue.custom_field_value(1)
     assert_equal 'Value for a custom field', issue.custom_field_value(2)
+    assert_equal ['Mac OS X', 'Windows'], issue.custom_field_value(mutiple.id).sort
     assert !issue.description.match(/^searchable field:/i)
   end
 
@@ -538,6 +541,16 @@ class MailHandlerTest < ActiveSupport::TestCase
     assert_equal 'd8e8fca2dc0f896fd7cb4cb0031ba249', attachment.digest
   end
 
+  def test_invalid_utf8
+    issue = submit_email(
+              'invalid_utf8.eml',
+              :issue => {:project => 'ecookbook'}
+            )
+    assert_kind_of Issue, issue
+    description = "\xD0\x97\xD0\xB4\xD1\x80\xD0\xB0\xD0\xB2\xD1\x81\xD1\x82\xD0\xB2\xD1\x83\xD0\xB9\xD1\x82\xD0\xB5?".force_encoding('UTF-8')
+    assert_equal description, issue.description
+  end
+
   def test_gmail_with_attachment_ja
     issue = submit_email(
               'gmail_with_attachment_ja.eml',
@@ -611,6 +624,16 @@ class MailHandlerTest < ActiveSupport::TestCase
     assert_include 'first', issue.description
     assert_include 'second', issue.description
     assert_include 'third', issue.description
+  end
+
+  def test_empty_text_part_should_not_stop_looking_for_content
+    issue = submit_email('empty_text_part.eml', :issue => {:project => 'ecookbook'})
+    assert_equal 'The html part.', issue.description
+  end
+
+  def test_empty_text_and_html_part_should_make_an_empty_description
+    issue = submit_email('empty_text_and_html_part.eml', :issue => {:project => 'ecookbook'})
+    assert_equal '', issue.description
   end
 
   def test_attachment_text_part_should_be_added_as_issue_attachment
@@ -974,6 +997,25 @@ class MailHandlerTest < ActiveSupport::TestCase
       assert !issue.description.include?('This paragraph is between delimiters')
       assert !issue.description.match(/^---$/)
       assert !issue.description.include?('This paragraph is after the delimiter')
+    end
+  end
+
+  test "truncate emails using a regex delimiter" do
+    delimiter = "On .*, .* at .*, .* <.*<mailto:.*>> wrote:"
+    with_settings :mail_handler_enable_regex_delimiters => '1', :mail_handler_body_delimiters => delimiter do
+      issue = submit_email('ticket_reply_from_mail.eml')
+      assert_issue_created(issue)
+      assert issue.description.include?('This paragraph is before delimiter')
+      assert !issue.description.include?('On Wed, 11 Oct at 1:05 PM, Jon Smith <jsmith@somenet.foo<mailto:jsmith@somenet.foo>> wrote:')
+      assert !issue.description.include?('This paragraph is after the delimiter')
+    end
+
+    with_settings :mail_handler_enable_regex_delimiters => '0', :mail_handler_body_delimiters => delimiter do
+      issue = submit_email('ticket_reply_from_mail.eml')
+      assert_issue_created(issue)
+      assert issue.description.include?('This paragraph is before delimiter')
+      assert issue.description.include?('On Wed, 11 Oct at 1:05 PM, Jon Smith <jsmith@somenet.foo<mailto:jsmith@somenet.foo>> wrote:')
+      assert issue.description.include?('This paragraph is after the delimiter')
     end
   end
 

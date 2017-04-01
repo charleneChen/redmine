@@ -17,13 +17,12 @@
 
 class AdminController < ApplicationController
   layout 'admin'
+  self.main_menu = false
   menu_item :projects, :only => :projects
   menu_item :plugins, :only => :plugins
   menu_item :info, :only => :info
 
   before_action :require_admin
-  helper :sort
-  include SortHelper
 
   def index
     @no_configuration_data = Redmine::DefaultData::Loader::no_data?
@@ -75,7 +74,6 @@ class AdminController < ApplicationController
   end
 
   def info
-    @db_adapter_name = ActiveRecord::Base.connection.adapter_name
     @checklist = [
       [:text_default_administrator_account_changed, User.default_admin_account_changed?],
       [:text_file_repository_writable, File.writable?(Attachment.storage_path)],

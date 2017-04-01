@@ -52,6 +52,12 @@ class ProjectsControllerTest < Redmine::ControllerTest
     assert_select 'feed>entry', :count => Project.visible(User.current).count
   end
 
+  def test_index_js
+    xhr :get, :index, :format => 'js', :q => 'coo'
+    assert_response :success
+    assert_equal 'text/javascript', response.content_type
+  end
+
   test "#index by non-admin user with view_time_entries permission should show overall spent time link" do
     @request.session[:user_id] = 3
     get :index
@@ -521,6 +527,18 @@ class ProjectsControllerTest < Redmine::ControllerTest
     assert_select 'a#tab-versions[href=?]', '/projects/ecookbook/settings/versions?version_name=.1&version_status='
   end
 
+  def test_settings_should_show_locked_members
+    user = User.generate!
+    member = User.add_to_project(user, Project.find(1))
+    user.lock!
+    assert user.reload.locked?
+    @request.session[:user_id] = 2
+
+    get :settings, :id => 'ecookbook', :tab => 'members'
+    assert_response :success
+    assert_select "tr#member-#{member.id}"
+  end
+
   def test_update
     @request.session[:user_id] = 2 # manager
     post :update, :id => 1, :project => {:name => 'Test changed name',
@@ -725,6 +743,16 @@ class ProjectsControllerTest < Redmine::ControllerTest
     post :copy, :id => 1, :project => {:name => 'Copy', :identifier => ''}
     assert_response :success
     assert_select_error /Identifier cannot be blank/
+  end
+
+  def test_jump_without_project_id_should_redirect_to_active_tab
+    get :index, :jump => 'issues'
+    assert_redirected_to '/issues'
+  end
+
+  def test_jump_should_not_redirect_to_unknown_tab
+    get :index, :jump => 'foobar'
+    assert_response :success
   end
 
   def test_jump_should_redirect_to_active_tab

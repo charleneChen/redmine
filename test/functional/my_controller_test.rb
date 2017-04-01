@@ -19,7 +19,7 @@ require File.expand_path('../../test_helper', __FILE__)
 
 class MyControllerTest < Redmine::ControllerTest
   fixtures :users, :email_addresses, :user_preferences, :roles, :projects, :members, :member_roles,
-  :issues, :issue_statuses, :trackers, :enumerations, :custom_fields, :auth_sources
+  :issues, :issue_statuses, :trackers, :enumerations, :custom_fields, :auth_sources, :queries
 
   def setup
     @request.session[:user_id] = 2
@@ -41,18 +41,165 @@ class MyControllerTest < Redmine::ControllerTest
     preferences = User.find(2).pref
     preferences[:my_page_layout] = {'top' => ['timelog']}
     preferences.save!
-    TimeEntry.create!(:user => User.find(2), :spent_on => Date.yesterday, :issue_id => 1, :hours => 2.5, :activity_id => 10)
+    with_issue =    TimeEntry.create!(:user => User.find(2), :spent_on => Date.yesterday, :hours => 2.5, :activity_id => 10, :issue_id => 1)
+    without_issue = TimeEntry.create!(:user => User.find(2), :spent_on => Date.yesterday, :hours => 3.5, :activity_id => 10, :project_id => 1)
 
     get :page
     assert_response :success
-    assert_select 'tr.time-entry' do
+    assert_select "tr#time-entry-#{with_issue.id}" do
       assert_select 'td.subject a[href="/issues/1"]'
       assert_select 'td.hours', :text => '2.50'
+    end
+    assert_select "tr#time-entry-#{without_issue.id}" do
+      assert_select 'td.hours', :text => '3.50'
+    end
+  end
+
+  def test_page_with_assigned_issues_block_and_no_custom_settings
+    preferences = User.find(2).pref
+    preferences.my_page_layout = {'top' => ['issuesassignedtome']}
+    preferences.my_page_settings = nil
+    preferences.save!
+
+    get :page
+    assert_select '#block-issuesassignedtome' do
+      assert_select 'table.issues' do
+        assert_select 'th a[data-remote=true][data-method=post]', :text => 'Tracker'
+      end
+      assert_select '#issuesassignedtome-settings' do
+        assert_select 'select[name=?]', 'settings[issuesassignedtome][columns][]'
+      end
+    end
+  end
+
+  def test_page_with_assigned_issues_block_and_custom_columns
+    preferences = User.find(2).pref
+    preferences.my_page_layout = {'top' => ['issuesassignedtome']}
+    preferences.my_page_settings = {'issuesassignedtome' => {:columns => ['tracker', 'subject', 'due_date']}}
+    preferences.save!
+
+    get :page
+    assert_select '#block-issuesassignedtome' do
+      assert_select 'table.issues td.due_date'
+    end
+  end
+
+  def test_page_with_assigned_issues_block_and_custom_sort
+    preferences = User.find(2).pref
+    preferences.my_page_layout = {'top' => ['issuesassignedtome']}
+    preferences.my_page_settings = {'issuesassignedtome' => {:sort => 'due_date'}}
+    preferences.save!
+
+    get :page
+    assert_select '#block-issuesassignedtome' do
+      assert_select 'table.issues.sort-by-due-date'
+    end
+  end
+ 
+  def test_page_with_issuequery_block_and_no_settings
+    user = User.find(2)
+    user.pref.my_page_layout = {'top' => ['issuequery']}
+    user.pref.save!
+
+    get :page
+    assert_response :success
+
+    assert_select '#block-issuequery' do
+      assert_select 'h3', :text => 'Issues'
+      assert_select 'select[name=?]', 'settings[issuequery][query_id]' do
+        assert_select 'option[value="5"]', :text => 'Open issues by priority and tracker'
+      end
+    end
+  end
+
+  def test_page_with_issuequery_block_and_global_query
+    user = User.find(2)
+    query = IssueQuery.create!(:name => 'All issues', :user => user, :column_names => [:tracker, :subject, :status, :assigned_to])
+    user.pref.my_page_layout = {'top' => ['issuequery']}
+    user.pref.my_page_settings = {'issuequery' => {:query_id => query.id}}
+    user.pref.save!
+
+    get :page
+    assert_response :success
+
+    assert_select '#block-issuequery' do
+      assert_select 'a[href=?]', "/issues?query_id=#{query.id}"
+      # assert number of columns (columns from query + id column + checkbox column)
+      assert_select 'table.issues th', 6
+      # assert results limit
+      assert_select 'table.issues tr.issue', 10
+      assert_select 'table.issues td.assigned_to'
+    end
+  end
+
+  def test_page_with_issuequery_block_and_project_query
+    user = User.find(2)
+    query = IssueQuery.create!(:name => 'All issues', :project => Project.find(1), :user => user, :column_names => [:tracker, :subject, :status, :assigned_to])
+    user.pref.my_page_layout = {'top' => ['issuequery']}
+    user.pref.my_page_settings = {'issuequery' => {:query_id => query.id}}
+    user.pref.save!
+
+    get :page
+    assert_response :success
+
+    assert_select '#block-issuequery' do
+      assert_select 'a[href=?]', "/projects/ecookbook/issues?query_id=#{query.id}"
+      # assert number of columns (columns from query + id column + checkbox column)
+      assert_select 'table.issues th', 6
+      # assert results limit
+      assert_select 'table.issues tr.issue', 10
+      assert_select 'table.issues td.assigned_to'
+    end
+  end
+
+  def test_page_with_issuequery_block_and_query_should_display_custom_columns
+    user = User.find(2)
+    query = IssueQuery.create!(:name => 'All issues', :user => user, :column_names => [:tracker, :subject, :status, :assigned_to])
+    user.pref.my_page_layout = {'top' => ['issuequery']}
+    user.pref.my_page_settings = {'issuequery' => {:query_id => query.id, :columns => [:subject, :due_date]}}
+    user.pref.save!
+
+    get :page
+    assert_response :success
+
+    assert_select '#block-issuequery' do
+      # assert number of columns (columns from query + id column + checkbox column)
+      assert_select 'table.issues th', 4
+      assert_select 'table.issues th', :text => 'Due date'
+    end
+  end
+
+  def test_page_with_multiple_issuequery_blocks
+    user = User.find(2)
+    query1 = IssueQuery.create!(:name => 'All issues', :user => user, :column_names => [:tracker, :subject, :status, :assigned_to])
+    query2 = IssueQuery.create!(:name => 'Other issues', :user => user, :column_names => [:tracker, :subject, :priority])
+    user.pref.my_page_layout = {'top' => ['issuequery__1', 'issuequery']}
+    user.pref.my_page_settings = {
+        'issuequery' => {:query_id => query1.id, :columns => [:subject, :due_date]},
+        'issuequery__1' => {:query_id => query2.id}
+      }
+    user.pref.save!
+
+    get :page
+    assert_response :success
+
+    assert_select '#block-issuequery' do
+      assert_select 'h3', :text => /All issues/
+      assert_select 'table.issues th', :text => 'Due date'
+    end
+
+    assert_select '#block-issuequery__1' do
+      assert_select 'h3', :text => /Other issues/
+      assert_select 'table.issues th', :text => 'Priority'
+    end
+
+    assert_select '#block-select' do
+      assert_select 'option[value=?]:not([disabled])', 'issuequery__2', :text => 'Issues'
     end
   end
 
   def test_page_with_all_blocks
-    blocks = MyController::BLOCKS.keys
+    blocks = Redmine::MyPage.blocks.keys
     preferences = User.find(2).pref
     preferences[:my_page_layout] = {'top' => blocks}
     preferences.save!
@@ -221,25 +368,45 @@ class MyControllerTest < Redmine::ControllerTest
     end
   end
 
-  def test_page_layout
-    get :page_layout
+  def test_update_page_with_blank_preferences
+    user = User.generate!(:language => 'en')
+    @request.session[:user_id] = user.id
+
+    xhr :post, :update_page, :settings => {'issuesassignedtome' => {'columns' => ['subject', 'due_date']}}
     assert_response :success
+    assert_include '$("#block-issuesassignedtome").replaceWith(', response.body
+    assert_include 'Due date', response.body
+
+    assert_equal({:columns => ['subject', 'due_date']}, user.reload.pref.my_page_settings('issuesassignedtome'))
   end
 
   def test_add_block
-    post :add_block, :block => 'issuesreportedbyme'
-    assert_redirected_to '/my/page_layout'
-    assert User.find(2).pref[:my_page_layout]['top'].include?('issuesreportedbyme')
+    post :add_block, :block => 'issueswatched'
+    assert_redirected_to '/my/page'
+    assert User.find(2).pref[:my_page_layout]['top'].include?('issueswatched')
   end
 
-  def test_add_invalid_block_should_redirect
+  def test_add_block_xhr
+    xhr :post, :add_block, :block => 'issueswatched'
+    assert_response :success
+    assert_include 'issueswatched', User.find(2).pref[:my_page_layout]['top']
+  end
+
+  def test_add_invalid_block_should_error
     post :add_block, :block => 'invalid'
-    assert_redirected_to '/my/page_layout'
+    assert_response 422
   end
 
   def test_remove_block
     post :remove_block, :block => 'issuesassignedtome'
-    assert_redirected_to '/my/page_layout'
+    assert_redirected_to '/my/page'
+    assert !User.find(2).pref[:my_page_layout].values.flatten.include?('issuesassignedtome')
+  end
+
+  def test_remove_block_xhr
+    xhr :post, :remove_block, :block => 'issuesassignedtome'
+    assert_response :success
+    assert_include '$("#block-issuesassignedtome").remove();', response.body
     assert !User.find(2).pref[:my_page_layout].values.flatten.include?('issuesassignedtome')
   end
 
@@ -260,6 +427,7 @@ class MyControllerTest < Redmine::ControllerTest
   end
 
   def test_reset_rss_key_without_existing_key
+    Token.delete_all
     assert_nil User.find(2).rss_token
     post :reset_rss_key
 

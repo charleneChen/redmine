@@ -18,9 +18,12 @@
 require File.expand_path('../../test_helper', __FILE__)
 
 class VersionsControllerTest < Redmine::ControllerTest
-  fixtures :projects, :versions, :issues, :users, :roles, :members,
-           :member_roles, :enabled_modules, :issue_statuses,
-           :issue_categories, :enumerations
+  fixtures :projects, :enabled_modules,
+           :trackers, :projects_trackers,
+           :versions, :issue_statuses, :issue_categories, :enumerations,
+           :issues,
+           :users, :email_addresses,
+           :roles, :members, :member_roles
 
   def setup
     User.current = nil
@@ -36,7 +39,7 @@ class VersionsControllerTest < Redmine::ControllerTest
     assert_select 'h3', :text => Version.find(1).name, :count => 0
 
     # Context menu on issues
-    assert_select "script", :text => Regexp.new(Regexp.escape("contextMenuInit('/issues/context_menu')"))
+    assert_select "form[data-cm-url=?]", '/issues/context_menu'
     assert_select "div#sidebar" do
       # Links to versions anchors
       assert_select 'a[href=?]', '#2.0'

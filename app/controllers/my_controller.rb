@@ -16,6 +16,7 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
 
 class MyController < ApplicationController
+  self.main_menu = false
   before_action :require_login
   # let user change user's password when user has to
   skip_before_action :check_password_change, :only => :password
@@ -26,19 +27,7 @@ class MyController < ApplicationController
   helper :issues
   helper :users
   helper :custom_fields
-
-  BLOCKS = { 'issuesassignedtome' => :label_assigned_to_me_issues,
-             'issuesreportedbyme' => :label_reported_issues,
-             'issueswatched' => :label_watched_issues,
-             'news' => :label_news_latest,
-             'calendar' => :label_calendar,
-             'documents' => :label_document_plural,
-             'timelog' => :label_spent_time
-           }.merge(Redmine::Views::MyPage::Block.additional_blocks).freeze
-
-  DEFAULT_LAYOUT = {  'left' => ['issuesassignedtome'],
-                      'right' => ['issuesreportedbyme']
-                   }.freeze
+  helper :queries
 
   def index
     page
@@ -48,7 +37,7 @@ class MyController < ApplicationController
   # Show user's page
   def page
     @user = User.current
-    @blocks = @user.pref[:my_page_layout] || DEFAULT_LAYOUT
+    @blocks = @user.pref.my_page_layout
   end
 
   # Edit user's account
@@ -143,68 +132,59 @@ class MyController < ApplicationController
     redirect_to my_account_path
   end
 
-  # User's page layout configuration
-  def page_layout
+  def update_page
     @user = User.current
-    @blocks = @user.pref[:my_page_layout] || DEFAULT_LAYOUT.dup
-    @block_options = []
-    BLOCKS.each do |k, v|
-      unless @blocks.values.flatten.include?(k)
-        @block_options << [l("my.blocks.#{v}", :default => [v, v.to_s.humanize]), k.dasherize]
-      end
+    block_settings = params[:settings] || {}
+
+    block_settings.each do |block, settings|
+      @user.pref.update_block_settings(block, settings)
     end
+    @user.pref.save
+    @updated_blocks = block_settings.keys
   end
 
   # Add a block to user's page
   # The block is added on top of the page
   # params[:block] : id of the block to add
   def add_block
-    block = params[:block].to_s.underscore
-    if block.present? && BLOCKS.key?(block)
-      @user = User.current
-      layout = @user.pref[:my_page_layout] || {}
-      # remove if already present in a group
-      %w(top left right).each {|f| (layout[f] ||= []).delete block }
-      # add it on top
-      layout['top'].unshift block
-      @user.pref[:my_page_layout] = layout
+    @user = User.current
+    @block = params[:block]
+    if @user.pref.add_block @block
       @user.pref.save
+      respond_to do |format|
+        format.html { redirect_to my_page_path }
+        format.js
+      end
+    else
+      render_error :status => 422
     end
-    redirect_to my_page_layout_path
   end
 
   # Remove a block to user's page
   # params[:block] : id of the block to remove
   def remove_block
-    block = params[:block].to_s.underscore
     @user = User.current
-    # remove block in all groups
-    layout = @user.pref[:my_page_layout] || {}
-    %w(top left right).each {|f| (layout[f] ||= []).delete block }
-    @user.pref[:my_page_layout] = layout
+    @block = params[:block]
+    @user.pref.remove_block @block
     @user.pref.save
-    redirect_to my_page_layout_path
+    respond_to do |format|
+      format.html { redirect_to my_page_path }
+      format.js
+    end
   end
 
   # Change blocks order on user's page
   # params[:group] : group to order (top, left or right)
-  # params[:list-(top|left|right)] : array of block ids of the group
+  # params[:blocks] : array of block ids of the group
   def order_blocks
-    group = params[:group]
     @user = User.current
-    if group.is_a?(String)
-      group_items = (params["blocks"] || []).collect(&:underscore)
-      group_items.each {|s| s.sub!(/^block_/, '')}
-      if group_items and group_items.is_a? Array
-        layout = @user.pref[:my_page_layout] || {}
-        # remove group blocks if they are presents in other groups
-        %w(top left right).each {|f|
-          layout[f] = (layout[f] || []) - group_items
-        }
-        layout[group] = group_items
-        @user.pref[:my_page_layout] = layout
-        @user.pref.save
-      end
+    group = params[:group].to_s
+    if %w(top left right).include? group
+      group_items = (params[:blocks] || []).collect(&:underscore)
+      # remove group blocks if they are presents in other groups
+      group_items.each {|s| @user.pref.remove_block(s)}
+      @user.pref.my_page_layout[group] = group_items
+      @user.pref.save
     end
     head 200
   end

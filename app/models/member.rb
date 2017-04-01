@@ -31,6 +31,17 @@ class Member < ActiveRecord::Base
 
   scope :active, lambda { joins(:principal).where(:users => {:status => Principal::STATUS_ACTIVE})}
 
+	# Sort by first role and principal
+  scope :sorted, lambda {
+    includes(:member_roles, :roles, :principal).
+      reorder("#{Role.table_name}.position").
+      order(Principal.fields_for_order_statement)
+  }
+  scope :sorted_by_project, lambda {
+    includes(:project).
+      reorder("#{Project.table_name}.lft")
+  }
+
   alias :base_reload :reload
   def reload(*args)
     @managed_roles = nil
@@ -128,7 +139,7 @@ class Member < ActiveRecord::Base
     if principal.is_a?(Group)
       !user.nil? && user.groups.include?(principal)
     else
-      self.user == user
+      self.principal == user
     end
   end
 
@@ -161,7 +172,8 @@ class Member < ActiveRecord::Base
     end
   end
 
-  # Creates memberships for principal with the attributes
+  # Creates memberships for principal with the attributes, or add the roles
+  # if the membership already exists.
   # * project_ids : one or more project ids
   # * role_ids : ids of the roles to give to each membership
   #
@@ -171,11 +183,13 @@ class Member < ActiveRecord::Base
     members = []
     if attributes
       project_ids = Array.wrap(attributes[:project_ids] || attributes[:project_id])
-      role_ids = attributes[:role_ids]
+      role_ids = Array.wrap(attributes[:role_ids])
       project_ids.each do |project_id|
-        members << Member.new(:principal => principal, :role_ids => role_ids, :project_id => project_id)
+        member = Member.find_or_new(project_id, principal)
+        member.role_ids |= role_ids
+        member.save
+        members << member
       end
-      principal.members << members
     end
     members
   end

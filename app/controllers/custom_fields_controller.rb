@@ -17,6 +17,7 @@
 
 class CustomFieldsController < ApplicationController
   layout 'admin'
+  self.main_menu = false
 
   before_action :require_admin
   before_action :build_new_custom_field, :only => [:new, :create]
@@ -27,6 +28,8 @@ class CustomFieldsController < ApplicationController
     respond_to do |format|
       format.html {
         @custom_fields_by_type = CustomField.all.group_by {|f| f.class.name }
+        @custom_fields_projects_count =
+          IssueCustomField.where(is_for_all: false).joins(:projects).group(:custom_field_id).count
       }
       format.api {
         @custom_fields = CustomField.all
@@ -73,7 +76,9 @@ class CustomFieldsController < ApplicationController
 
   def destroy
     begin
-      @custom_field.destroy
+      if @custom_field.destroy
+        flash[:notice] = l(:notice_successful_delete)
+      end
     rescue
       flash[:error] = l(:error_can_not_delete_custom_field)
     end

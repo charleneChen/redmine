@@ -1,5 +1,6 @@
 <%= hidden_field_tag 'set_filter', '1' %>
 <%= hidden_field_tag 'type', @query.type, :disabled => true, :id => 'query_type' %>
+<%= query_hidden_sort_tag(@query) %>
 
 <div id="query_form_with_buttons" class="hide-when-print">
 <div id="query_form_content">
@@ -43,7 +44,7 @@
 
 <p class="buttons">
   <%= link_to_function l(:button_apply), '$("#query_form").submit()', :class => 'icon icon-checked' %>
-  <%= link_to l(:button_clear), { :set_filter => 1, :project_id => @project }, :class => 'icon icon-reload'  %>
+  <%= link_to l(:button_clear), { :set_filter => 1, :sort => '', :project_id => @project }, :class => 'icon icon-reload'  %>
   <% if @query.new_record? %>
     <% if User.current.allowed_to?(:save_queries, @project, :global => true) %>
       <%= link_to_function l(:button_save),

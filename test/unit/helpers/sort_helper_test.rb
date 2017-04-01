@@ -19,10 +19,10 @@ require File.expand_path('../../../test_helper', __FILE__)
 
 class SortHelperTest < Redmine::HelperTest
   include SortHelper
-  include Redmine::I18n
   include ERB::Util
 
   def setup
+    super
     @session = nil
     @sort_param = nil
   end
@@ -64,8 +64,8 @@ class SortHelperTest < Redmine::HelperTest
     sort_init 'attr1', 'desc'
     sort_update({'attr1' => 'table1.attr1', 'attr2' => 'table2.attr2'})
 
-    assert_equal ['table1.attr1 DESC'], sort_clause
-    assert_equal 'attr1:desc', @session['foo_bar_sort']
+    assert_nil sort_clause
+    assert_equal 'invalid_key', @session['foo_bar_sort']
   end
 
   def test_invalid_order_params_sort

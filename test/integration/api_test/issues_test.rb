@@ -82,6 +82,22 @@ class Redmine::ApiTest::IssuesTest < Redmine::ApiTest::Base
     end
   end
 
+  test "GET /issues.xml with attachments" do
+    get '/issues.xml?include=attachments'
+
+    assert_response :success
+    assert_equal 'application/xml', @response.content_type
+
+    assert_select 'issue id', :text => '3' do
+      assert_select '~ attachments attachment', 4
+    end
+
+    assert_select 'issue id', :text => '1' do
+      assert_select '~ attachments'
+      assert_select '~ attachments attachment', 0
+    end
+  end
+
   test "GET /issues.xml with invalid query params" do
     get '/issues.xml', {:f => ['start_date'], :op => {:start_date => '='}}
 
@@ -356,6 +372,7 @@ class Redmine::ApiTest::IssuesTest < Redmine::ApiTest::Base
 
   test "GET /issues/:id.xml should contains total_estimated_hours and total_spent_hours" do
     parent = Issue.find(3)
+    parent.update_columns :estimated_hours => 2.0
     child = Issue.generate!(:parent_issue_id => parent.id, :estimated_hours => 3.0)
     TimeEntry.create!(:project => child.project, :issue => child, :user => child.author, :spent_on => child.author.today,
                       :hours => '2.5', :comments => '', :activity_id => TimeEntryActivity.first.id)
@@ -372,6 +389,7 @@ class Redmine::ApiTest::IssuesTest < Redmine::ApiTest::Base
 
   test "GET /issues/:id.xml should contains total_estimated_hours, and should not contains spent_hours and total_spent_hours when permission does not exists" do
     parent = Issue.find(3)
+    parent.update_columns :estimated_hours => 2.0
     child = Issue.generate!(:parent_issue_id => parent.id, :estimated_hours => 3.0)
     # remove permission!
     Role.anonymous.remove_permission! :view_time_entries
@@ -387,8 +405,26 @@ class Redmine::ApiTest::IssuesTest < Redmine::ApiTest::Base
     end
   end
 
+  test "GET /issues/:id.xml should contains visible spent_hours only" do
+    user = User.find_by_login('jsmith')
+    Role.find(1).update(:time_entries_visibility => 'own')
+    parent = Issue.find(3)
+    child = Issue.generate!(:parent_issue_id => parent.id)
+    TimeEntry.generate!(:user => user, :hours => 5.5, :issue_id => parent.id)
+    TimeEntry.generate!(:user => user, :hours => 2, :issue_id => child.id)
+    TimeEntry.generate!(:user => User.find(1), :hours => 100, :issue_id => child.id)
+    get '/issues/3.xml', {} , credentials(user.login)
+
+    assert_equal 'application/xml', response.content_type
+    assert_select 'issue' do
+      assert_select 'spent_hours',           '5.5'
+      assert_select 'total_spent_hours',     '7.5'
+    end
+  end
+
   test "GET /issues/:id.json should contains total_estimated_hours and total_spent_hours" do
     parent = Issue.find(3)
+    parent.update_columns :estimated_hours => 2.0
     child = Issue.generate!(:parent_issue_id => parent.id, :estimated_hours => 3.0)
     TimeEntry.create!(:project => child.project, :issue => child, :user => child.author, :spent_on => child.author.today,
                       :hours => '2.5', :comments => '', :activity_id => TimeEntryActivity.first.id)
@@ -404,6 +440,7 @@ class Redmine::ApiTest::IssuesTest < Redmine::ApiTest::Base
 
   test "GET /issues/:id.json should contains total_estimated_hours, and should not contains spent_hours and total_spent_hours when permission does not exists" do
     parent = Issue.find(3)
+    parent.update_columns :estimated_hours => 2.0
     child = Issue.generate!(:parent_issue_id => parent.id, :estimated_hours => 3.0)
     # remove permission!
     Role.anonymous.remove_permission! :view_time_entries
@@ -414,8 +451,24 @@ class Redmine::ApiTest::IssuesTest < Redmine::ApiTest::Base
     json = ActiveSupport::JSON.decode(response.body)
     assert_equal parent.estimated_hours, json['issue']['estimated_hours']
     assert_equal (parent.estimated_hours.to_f + 3.0), json['issue']['total_estimated_hours']
-    assert_equal nil, json['issue']['spent_hours']
-    assert_equal nil, json['issue']['total_spent_hours']
+    assert_nil json['issue']['spent_hours']
+    assert_nil json['issue']['total_spent_hours']
+  end
+
+  test "GET /issues/:id.json should contains visible spent_hours only" do
+    user = User.find_by_login('jsmith')
+    Role.find(1).update(:time_entries_visibility => 'own')
+    parent = Issue.find(3)
+    child = Issue.generate!(:parent_issue_id => parent.id)
+    TimeEntry.generate!(:user => user, :hours => 5.5, :issue_id => parent.id)
+    TimeEntry.generate!(:user => user, :hours => 2, :issue_id => child.id)
+    TimeEntry.generate!(:user => User.find(1), :hours => 100, :issue_id => child.id)
+    get '/issues/3.json', {} , credentials(user.login)
+
+    assert_equal 'application/json', response.content_type
+    json = ActiveSupport::JSON.decode(response.body)
+    assert_equal 5.5, json['issue']['spent_hours']
+    assert_equal 7.5, json['issue']['total_spent_hours']
   end
 
   test "POST /issues.xml should create an issue with the attributes" do
@@ -687,6 +740,14 @@ JSON
 
     assert_response :unprocessable_entity
     assert_select 'errors error', :text => "Subject cannot be blank"
+  end
+
+  test "PUT /issues/:id.xml with invalid assignee should return error" do
+    user = User.generate!
+    put '/issues/6.xml', {:issue => {:assigned_to_id => user.id}}, credentials('jsmith')
+
+    assert_response :unprocessable_entity
+    assert_select 'errors error', :text => "Assignee is invalid"
   end
 
   test "PUT /issues/:id.json" do

@@ -375,11 +375,22 @@ class AccountControllerTest < Redmine::ControllerTest
     end
   end
 
-  def test_get_lost_password_with_token_should_display_the_password_recovery_form
+  def test_get_lost_password_with_token_should_redirect_with_token_in_session
     user = User.find(2)
     token = Token.create!(:action => 'recovery', :user => user)
 
     get :lost_password, :token => token.value
+    assert_redirected_to '/account/lost_password'
+
+    assert_equal token.value, request.session[:password_recovery_token]
+  end
+
+  def test_get_lost_password_with_token_in_session_should_display_the_password_recovery_form
+    user = User.find(2)
+    token = Token.create!(:action => 'recovery', :user => user)
+    request.session[:password_recovery_token] = token.value
+
+    get :lost_password
     assert_response :success
 
     assert_select 'input[type=hidden][name=token][value=?]', token.value
@@ -425,6 +436,34 @@ class AccountControllerTest < Redmine::ControllerTest
     assert_not_nil Token.find_by_id(token.id), "Token was deleted"
 
     assert_select 'input[type=hidden][name=token][value=?]', token.value
+  end
+
+  def test_post_lost_password_with_token_should_not_accept_same_password_if_user_must_change_password
+    user = User.find(2)
+    user.password = "originalpassword"
+    user.must_change_passwd = true
+    user.save!
+    token = Token.create!(:action => 'recovery', :user => user)
+
+    post :lost_password, :token => token.value, :new_password => 'originalpassword', :new_password_confirmation => 'originalpassword'
+    assert_response :success
+    assert_not_nil Token.find_by_id(token.id), "Token was deleted"
+
+    assert_select '.flash', :text => /The new password must be different/
+    assert_select 'input[type=hidden][name=token][value=?]', token.value
+  end
+
+  def test_post_lost_password_with_token_should_reset_must_change_password
+    user = User.find(2)
+    user.password = "originalpassword"
+    user.must_change_passwd = true
+    user.save!
+    token = Token.create!(:action => 'recovery', :user => user)
+
+    post :lost_password, :token => token.value, :new_password => 'newpassword', :new_password_confirmation => 'newpassword'
+    assert_redirected_to '/login'
+
+    assert_equal false, user.reload.must_change_passwd
   end
 
   def test_post_lost_password_with_invalid_token_should_redirect
